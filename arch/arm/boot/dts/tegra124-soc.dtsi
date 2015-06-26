@@ -559,10 +559,4 @@
 		status = "disabled";
 	};
 
-	psci {
-		compatible = "arm,psci";
-		method = "smc";
-		cpu_suspend = <0x84000001>;
-		cpu_on = <0x84000003>;
-	};
 };
