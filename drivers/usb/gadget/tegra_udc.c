@@ -1613,6 +1613,11 @@ static int tegra_vbus_draw(struct usb_gadget *gadget, unsigned mA)
 
 	udc = container_of(gadget, struct tegra_udc, gadget);
 
+	if(mA == 2)
+		tegra_udc_set_charger_type(udc, CONNECT_TYPE_NONE);
+	else
+		tegra_udc_set_charger_type(udc, CONNECT_TYPE_SDP);
+
 	udc->current_limit = mA;
 	schedule_work(&udc->current_work);
 
