@@ -134,6 +134,9 @@ int tegra_panel_gpio_get_dt(const char *comp_str,
 	panel->panel_gpio[TEGRA_GPIO_PWM] =
 		of_get_named_gpio(node, "nvidia,dsi-panel-bl-pwm-gpio", 0);
 
+	panel->panel_gpio[TEGRA_GPIO_TE] =
+		of_get_named_gpio(node, "nvidia,te-gpio", 0);
+
 	for (cnt = 0; cnt < TEGRA_N_GPIO_PANEL; cnt++) {
 		if (gpio_is_valid(panel->panel_gpio[cnt])) {
 			switch (cnt) {
@@ -146,14 +149,15 @@ int tegra_panel_gpio_get_dt(const char *comp_str,
 			case TEGRA_GPIO_PWM:
 				label = "tegra-panel-pwm";
 				break;
+			case TEGRA_GPIO_TE:
+				label = "tegra-panel-te";
+				break;
 			default:
 				pr_err("tegra panel no gpio entry\n");
 			}
 			gpio_request(panel->panel_gpio[cnt], label);
 		}
 	}
-	if (gpio_is_valid(panel->panel_gpio[TEGRA_GPIO_PWM]))
-		gpio_free(panel->panel_gpio[TEGRA_GPIO_PWM]);
 	panel->panel_gpio_populated = true;
 fail:
 	of_node_put(node);
