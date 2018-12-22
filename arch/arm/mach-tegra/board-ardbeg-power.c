@@ -18,6 +18,7 @@
  */
 
 #include <linux/i2c.h>
+#include <linux/i2c/pca954x.h>
 #include <linux/i2c/pca953x.h>
 #include <linux/platform_device.h>
 #include <linux/resource.h>
@@ -37,7 +38,10 @@
 #include <linux/gpio.h>
 #include <linux/regulator/tegra-dfll-bypass-regulator.h>
 #include <linux/power/bq2419x-charger.h>
+#include <linux/power/bq2471x-charger.h>
+#include <linux/power/bq2477x-charger.h>
 #include <linux/tegra-fuse.h>
+
 
 #include <asm/mach-types.h>
 #include <mach/pinmux-t12.h>
@@ -54,6 +58,7 @@
 #include "tegra_cl_dvfs.h"
 #include "tegra11_soctherm.h"
 #include "tegra3_tsensor.h"
+#include "common.h"
 
 #define E1735_EMULATE_E1767_SKU	1001
 
@@ -74,16 +79,7 @@ static struct regulator_consumer_supply as3722_ldo0_supply[] = {
 };
 
 static struct regulator_consumer_supply as3722_ldo1_supply[] = {
-	REGULATOR_SUPPLY("vdd_cam1_1v8_cam", NULL),
-	REGULATOR_SUPPLY("vdd_cam2_1v8_cam", NULL),
-	REGULATOR_SUPPLY("vif", "2-0010"),
-	REGULATOR_SUPPLY("vif", "2-0036"),
-	REGULATOR_SUPPLY("vdd_i2c", "2-000c"),
-	REGULATOR_SUPPLY("vi2c", "2-0030"),
-	REGULATOR_SUPPLY("vif2", "2-0021"),
-	REGULATOR_SUPPLY("dovdd", "2-0010"),
-	REGULATOR_SUPPLY("vdd", "2-004a"),
-	REGULATOR_SUPPLY("vif", "2-0048"),
+	REGULATOR_SUPPLY("vdd_vbrtr", NULL),
 };
 
 static struct regulator_consumer_supply as3722_ldo2_supply[] = {
@@ -97,7 +93,6 @@ static struct regulator_consumer_supply as3722_ldo2_supply[] = {
 	REGULATOR_SUPPLY("pwrdet_mipi", NULL),
 	REGULATOR_SUPPLY("avdd_hsic_com", NULL),
 	REGULATOR_SUPPLY("avdd_hsic_mdm", NULL),
-	REGULATOR_SUPPLY("vdd_lcd_bl", NULL),
 };
 
 static struct regulator_consumer_supply as3722_ldo3_supply[] = {
@@ -105,18 +100,13 @@ static struct regulator_consumer_supply as3722_ldo3_supply[] = {
 };
 
 static struct regulator_consumer_supply as3722_ldo4_supply[] = {
-	REGULATOR_SUPPLY("vdd_2v7_hv", NULL),
-	REGULATOR_SUPPLY("avdd_cam1_cam", NULL),
-	REGULATOR_SUPPLY("avdd_cam2_cam", NULL),
-	REGULATOR_SUPPLY("avdd_cam3_cam", NULL),
-	REGULATOR_SUPPLY("vana", "2-0010"),
-	REGULATOR_SUPPLY("avdd_ov5693", "2-0010"),
+	/* Config AVDD for OV9762 */
+	REGULATOR_SUPPLY("avdd_ov9762", "2-0036"),
 };
 
 static struct regulator_consumer_supply as3722_ldo5_supply[] = {
-	REGULATOR_SUPPLY("vdd_1v2_cam", NULL),
-	REGULATOR_SUPPLY("vdig", "2-0010"),
-	REGULATOR_SUPPLY("vdig", "2-0036"),
+	/* Config VDD_DIG for OV9762 */
+	REGULATOR_SUPPLY("vdig_ov9762", "2-0036"),
 };
 
 static struct regulator_consumer_supply as3722_ldo6_supply[] = {
@@ -125,10 +115,6 @@ static struct regulator_consumer_supply as3722_ldo6_supply[] = {
 };
 
 static struct regulator_consumer_supply as3722_ldo7_supply[] = {
-	REGULATOR_SUPPLY("vdd_cam_1v1_cam", NULL),
-	REGULATOR_SUPPLY("imx135_reg2", NULL),
-	REGULATOR_SUPPLY("vdig_lv", "2-0010"),
-	REGULATOR_SUPPLY("dvdd", "2-0010"),
 };
 
 static struct regulator_consumer_supply as3722_ldo9_supply[] = {
@@ -136,15 +122,8 @@ static struct regulator_consumer_supply as3722_ldo9_supply[] = {
 };
 
 static struct regulator_consumer_supply as3722_ldo10_supply[] = {
-	REGULATOR_SUPPLY("avdd_af1_cam", NULL),
-	REGULATOR_SUPPLY("imx135_reg1", NULL),
-	REGULATOR_SUPPLY("vdd", "2-000c"),
-	REGULATOR_SUPPLY("vin", "2-0030"),
-	REGULATOR_SUPPLY("vana", "2-0036"),
-	REGULATOR_SUPPLY("vana", "2-0021"),
-	REGULATOR_SUPPLY("vdd_af1", "2-0010"),
-	REGULATOR_SUPPLY("vin", "2-004a"),
-	REGULATOR_SUPPLY("vana", "2-0048"),
+	/* Config DVDD for OV9762 */
+	REGULATOR_SUPPLY("dvdd_ov9762", "2-0036"),
 };
 
 static struct regulator_consumer_supply as3722_ldo11_supply[] = {
@@ -167,12 +146,6 @@ static struct regulator_consumer_supply as3722_sd2_supply[] = {
 };
 
 static struct regulator_consumer_supply as3722_sd4_supply[] = {
-	REGULATOR_SUPPLY("avdd_hdmi", "tegradc.1"),
-	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.1"),
-#ifdef CONFIG_TEGRA_HDMI_PRIMARY
-	REGULATOR_SUPPLY("avdd_hdmi", "tegradc.0"),
-	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.0"),
-#endif
 	REGULATOR_SUPPLY("avdd_pex_pll", "tegra-pcie"),
 	REGULATOR_SUPPLY("avddio_pex", "tegra-pcie"),
 	REGULATOR_SUPPLY("dvddio_pex", "tegra-pcie"),
@@ -182,10 +155,13 @@ static struct regulator_consumer_supply as3722_sd4_supply[] = {
 
 static struct regulator_consumer_supply as3722_sd5_supply[] = {
 	REGULATOR_SUPPLY("dbvdd", "tegra-snd-rt5639.0"),
+	REGULATOR_SUPPLY("dbvdd", "tegra-snd-rt5640.0"),
 	REGULATOR_SUPPLY("dbvdd", "tegra-snd-rt5645.0"),
 	REGULATOR_SUPPLY("avdd", "tegra-snd-rt5639.0"),
+	REGULATOR_SUPPLY("avdd", "tegra-snd-rt5640.0"),
 	REGULATOR_SUPPLY("avdd", "tegra-snd-rt5645.0"),
 	REGULATOR_SUPPLY("dmicvdd", "tegra-snd-rt5639.0"),
+	REGULATOR_SUPPLY("dmicvdd", "tegra-snd-rt5640.0"),
 	REGULATOR_SUPPLY("dmicvdd", "tegra-snd-rt5645.0"),
 	REGULATOR_SUPPLY("avdd_osc", NULL),
 	REGULATOR_SUPPLY("vddio_sys", NULL),
@@ -207,19 +183,18 @@ static struct regulator_consumer_supply as3722_sd5_supply[] = {
 	REGULATOR_SUPPLY("pwrdet_uart", NULL),
 	REGULATOR_SUPPLY("vddio_bb", NULL),
 	REGULATOR_SUPPLY("pwrdet_bb", NULL),
-	REGULATOR_SUPPLY("vdd_1v8b", "0-0048"),
 	REGULATOR_SUPPLY("vdd_dtv", NULL),
 	REGULATOR_SUPPLY("vdd_1v8_eeprom", NULL),
 	REGULATOR_SUPPLY("vddio_cam", "tegra_camera"),
-	REGULATOR_SUPPLY("vddio_cam", "vi"),
+	REGULATOR_SUPPLY("vddio_cam", "vi.0"),
+	REGULATOR_SUPPLY("vddio_cam", "vi.1"),
 	REGULATOR_SUPPLY("pwrdet_cam", NULL),
 	REGULATOR_SUPPLY("dvdd", "spi0.0"),
-	REGULATOR_SUPPLY("vlogic", "0-0069"),
-	REGULATOR_SUPPLY("vid", "0-000c"),
-	REGULATOR_SUPPLY("vddio", "0-0077"),
+	REGULATOR_SUPPLY("vddio", "0-0077"),/*<< bcm2079_i2c NFC */
 	REGULATOR_SUPPLY("vdd_sata", "tegra-sata.0"),
 	REGULATOR_SUPPLY("avdd_sata", "tegra-sata.0"),
 	REGULATOR_SUPPLY("avdd_sata_pll", "tegra-sata.0"),
+	REGULATOR_SUPPLY("vdd", "0-004c"), /*<< tmp451 */
 };
 
 static struct regulator_consumer_supply as3722_sd6_supply[] = {
@@ -251,7 +226,7 @@ static struct as3722_pinctrl_platform_data as3722_pctrl_pdata[] = {
 	AS3722_PIN_CONTROL("gpio2", "gpio", NULL, NULL, NULL, "output-high"),
 	AS3722_PIN_CONTROL("gpio3", "gpio", NULL, NULL, "enabled", NULL),
 	AS3722_PIN_CONTROL("gpio4", "gpio", NULL, NULL, NULL, "output-high"),
-	AS3722_PIN_CONTROL("gpio5", "clk32k-out", NULL, NULL, NULL, NULL),
+	AS3722_PIN_CONTROL("gpio5", "clk32k-out", "pull-down", NULL, NULL, NULL),
 	AS3722_PIN_CONTROL("gpio6", "gpio", NULL, NULL, "enabled", NULL),
 	AS3722_PIN_CONTROL("gpio7", "gpio", NULL, NULL, NULL, "output-low"),
 };
@@ -332,9 +307,7 @@ int __init ardbeg_as3722_regulator_init(void)
 	as3722_ldo3_reg_pdata.disable_tracking_suspend = true;
 
 	tegra_get_board_info(&board_info);
-	if ((board_info.board_id == BOARD_E1792) ||
-	    (board_info.board_id == BOARD_E1971) ||
-	    (board_info.board_id == BOARD_E1973)) {
+	if (board_info.board_id == BOARD_E1792) {
 		/*Default DDR voltage is 1.35V but lpddr3 supports 1.2V*/
 		as3722_sd2_reg_idata.constraints.min_uV = 1200000;
 		as3722_sd2_reg_idata.constraints.max_uV = 1200000;
@@ -387,15 +360,14 @@ static struct regulator_consumer_supply palmas_ti913_regen1_supply[] = {
 	REGULATOR_SUPPLY("hvdd_pex_pll_e", "tegra-pcie"),
 	REGULATOR_SUPPLY("vddio_pex_ctl", "tegra-pcie"),
 	REGULATOR_SUPPLY("pwrdet_pex_ctl", NULL),
-	REGULATOR_SUPPLY("vdd", "0-0069"),
-	REGULATOR_SUPPLY("vdd", "0-0048"),
 	REGULATOR_SUPPLY("vdd", "stm8t143.2"),
-	REGULATOR_SUPPLY("vdd", "0-000c"),
-	REGULATOR_SUPPLY("vdd", "0-0077"),
 	REGULATOR_SUPPLY("hvdd_sata", "tegra-sata.0"),
-	REGULATOR_SUPPLY("vdd", "1-004c"),
-	REGULATOR_SUPPLY("vdd", "1-004d"),
-	REGULATOR_SUPPLY("vcc", "1-0071"),
+	REGULATOR_SUPPLY("vdd", "0-0010"), /*<< cm3217 */
+	REGULATOR_SUPPLY("vdd", "0-0077"), /*<< bcm2079x NFC */
+	REGULATOR_SUPPLY("vdd", "1-0040"), /*<< ina3221 */
+	REGULATOR_SUPPLY("vddhi", "1-0044"), /*<< iqs253 */
+
+	REGULATOR_SUPPLY("vdd_sensorhub", NULL), /*<< sensorhub */
 };
 
 PALMAS_REGS_PDATA(ti913_smps123, 650, 1400, NULL, 0, 1, 1, NORMAL,
@@ -406,7 +378,7 @@ PALMAS_REGS_PDATA(ti913_smps6, 1800, 1800, NULL, 1, 1, 1, NORMAL,
 	0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_smps7, 900, 1350, NULL, 1, 1, 1, NORMAL,
 	0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ti913_smps9, 1050, 1050, NULL, 0, 0, 0, NORMAL,
+PALMAS_REGS_PDATA(ti913_smps9, 1050, 1050, NULL, 1, 0, 0, NORMAL,
 	0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo1, 1050, 1250, palmas_rails(ti913_smps7),
 		1, 1, 1, 0, 0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
@@ -416,8 +388,8 @@ PALMAS_REGS_PDATA(ti913_ldo3, 3100, 3100, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo4, 1200, 1200, palmas_rails(ti913_smps6),
 		0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo5, 2700, 2700, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ti913_ldo6, 1800, 1800, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ti913_ldo7, 2700, 2700, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
+PALMAS_REGS_PDATA(ti913_ldo6, 3000, 3000, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
+PALMAS_REGS_PDATA(ti913_ldo7, 1800, 1800, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo8, 800, 800, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo9, 1800, 3300, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldoln, 1050, 1050, palmas_rails(ti913_smps6),
@@ -587,9 +559,7 @@ int __init ardbeg_tps65913_regulator_init(void)
 	reg_idata_ti913_smps123.constraints.init_uV = 900000;
 
 	tegra_get_board_info(&board_info);
-	if ((board_info.board_id == BOARD_E1792) ||
-	    (board_info.board_id == BOARD_E1971) ||
-	    (board_info.board_id == BOARD_E1973)) {
+	if (board_info.board_id == BOARD_E1792) {
 		/*Default DDR voltage is 1.35V but lpddr3 supports 1.2V*/
 		reg_idata_ti913_smps7.constraints.min_uV = 1200000;
 		reg_idata_ti913_smps7.constraints.max_uV = 1200000;
@@ -601,14 +571,75 @@ int __init ardbeg_tps65913_regulator_init(void)
 }
 
 static struct pca953x_platform_data tca6408_pdata = {
-	.gpio_base = PMU_TCA6416_GPIO_BASE,
-	.irq_base = -1,
+	        .gpio_base = PMU_TCA6416_GPIO_BASE,
 };
 
 static const struct i2c_board_info tca6408_expander[] = {
 	{
 		I2C_BOARD_INFO("tca6408", 0x20),
 		.platform_data = &tca6408_pdata,
+	},
+};
+
+
+/* Working theory. 5V -> 12V converter operating at 92% efficiency.
+** According to TI WEBENCH, TPS55330 boost 5V in -> 12V out.
+** Assuming 90% efficency for the boost converter
+** Assuming 90% efficency for the charger converting 12V to 8700
+** (2 batteries rated at 4.35v each = 8.7volts)
+** Empirical observations.
+** iin > ichg or the charger won't limit system current properly NOT
+** iin >= ~512ma as according to bs24770.pdf page 21 wrt Setting Input Current.
+** When programming over I2C, current steps are by 64ma so we & with ~0x3F
+*/
+static struct bq2477x_charge_zone ardbeg_bq2477x_charge_zones[3] = {
+	/* Cold temperature charging. */
+	{
+		.min_temp = -150,	/* -15.0 C */
+		.max_temp = 20,		/* 2.0 C */
+		.charge_voltage = 0,	/* 0V */
+		.charge_current = 0,	/* 0mA */
+	},
+	/* Nominal temperature charging. */
+	{
+		.min_temp = 20,		/* 2.0 C */
+		.max_temp = 450,	/* 45.0 C */
+		.charge_voltage = 8704, /* 8.704V */
+		.charge_current = 2240, /* 2240mA */
+	},
+	/* Overtemp shutdown. */
+	{
+		.min_temp = 450,	/* 45.0 C */
+		.max_temp = 999,	/* 99.9 C */
+		.charge_voltage = 0,	/* 0V */
+		.charge_current = 0,	/* 0mA */
+	}
+};
+
+struct bq2477x_platform_data ardbeg_bq2477x_pdata = {
+	.dac_v			= 8704,
+	.dac_minsv		= 6144,
+	.extcon_dock_name	= "power_bq2477x_extcon",
+	.max_charge_ua		= 2440000,
+	.dock_max_ua		= 2000000,
+	.wdt_refresh_timeout	= 40,
+	.disable_vbus_12v_boost_gpio = TEGRA_GPIO_PBB7,	/* 12v boost disable */
+	.dock_12v_gpio = TEGRA_GPIO_PS0,
+	.acok_gpio = TEGRA_GPIO_PJ0,
+	.charge_table = ardbeg_bq2477x_charge_zones,
+};
+
+static struct platform_device yellowstone_bq2477x_extcon = {
+	.name	= "power_bq2477x_extcon",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &ardbeg_bq2477x_pdata,
+	},
+};
+static struct i2c_board_info __initdata bq2477x_boardinfo[] = {
+	{
+		I2C_BOARD_INFO("bq2477x", 0x6A),
+		.platform_data	= &ardbeg_bq2477x_pdata,
 	},
 };
 
@@ -626,15 +657,6 @@ static struct tegra_suspend_platform_data ardbeg_suspend_data = {
 	.min_residency_ncpu_slow = 5000,
 	.min_residency_mclk_stop = 5000,
 	.min_residency_crail = 20000,
-#ifdef CONFIG_TEGRA_LP1_LOW_COREVOLTAGE
-	.lp1_lowvolt_support = true,
-	.i2c_base_addr = TEGRA_I2C5_BASE,
-	.pmuslave_addr = 0xB0,
-	.core_reg_addr = 0x33,
-	.lp1_core_volt_low_cold = 0x33,
-	.lp1_core_volt_low = 0x33,
-	.lp1_core_volt_high = 0x42,
-#endif
 };
 
 static struct power_supply_extcon_plat_data extcon_pdata = {
@@ -648,6 +670,22 @@ static struct platform_device power_supply_extcon_device = {
 		.platform_data = &extcon_pdata,
 	},
 };
+
+int __init ardbeg_suspend_init(void)
+{
+	struct board_info pmu_board_info;
+
+	tegra_get_pmu_board_info(&pmu_board_info);
+
+	if ((pmu_board_info.board_id == BOARD_E1735) &&
+	    (pmu_board_info.sku != E1735_EMULATE_E1767_SKU)) {
+		ardbeg_suspend_data.cpu_timer = 2000;
+		ardbeg_suspend_data.crail_up_early = true;
+	}
+
+	tegra_init_suspend(&ardbeg_suspend_data);
+	return 0;
+}
 
 /* Macro for defining fixed regulator sub device data */
 #define FIXED_SUPPLY(_name) "fixed_reg_en_"#_name
@@ -717,6 +755,7 @@ static struct regulator_consumer_supply fixed_reg_en_vdd_sd_supply[] = {
 static struct regulator_consumer_supply fixed_reg_en_vdd_sys_5v0_supply[] = {
 	REGULATOR_SUPPLY("vdd_spk_5v0", NULL),
 	REGULATOR_SUPPLY("spkvdd", "tegra-snd-rt5639.0"),
+	REGULATOR_SUPPLY("spkvdd", "tegra-snd-rt5640.0"),
 	REGULATOR_SUPPLY("spkvdd", "tegra-snd-rt5645.0"),
 };
 
@@ -767,15 +806,22 @@ static struct regulator_consumer_supply fixed_reg_en_avdd_3v3_dp_supply[] = {
 	REGULATOR_SUPPLY("avdd_3v3_dp", NULL),
 };
 
-static struct regulator_consumer_supply fixed_reg_en_en_bat_supply[] = {
-	REGULATOR_SUPPLY("en_bat", NULL),
+static struct regulator_consumer_supply fixed_reg_en_avdd_hdmi_pll_supply[] = {
+	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.1"),
+#ifdef CONFIG_TEGRA_HDMI_PRIMARY
+	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.0"),
+#endif
 };
 
 #define fixed_reg_en_ti913_gpio2_supply fixed_reg_en_as3722_gpio1_supply
 #define fixed_reg_en_ti913_gpio3_supply fixed_reg_en_as3722_gpio4_supply
+#ifdef PBP5_EVT_BOARD
+#define fixed_reg_en_ti913_gpio6_supply fixed_reg_en_tca6408_p6_supply
+#else
 #define fixed_reg_en_ti913_gpio4_supply fixed_reg_en_tca6408_p0_supply
 #define fixed_reg_en_ti913_gpio6_supply fixed_reg_en_tca6408_p2_supply
 #define fixed_reg_en_ti913_gpio7_supply fixed_reg_en_tca6408_p6_supply
+#endif
 
 FIXED_REG(0,	battery_ardbeg,	battery_ardbeg,
 	NULL,	0,	0,	-1,
@@ -785,12 +831,15 @@ FIXED_REG(1,	usb0_vbus,	usb0_vbus,
 	NULL,	0,	0,	TEGRA_GPIO_PN4,
 	true,	true,	0,	5000,	0);
 
+/* HACKING. usb1_vbus is disabled on Yellowstone. Change it to unused
+ * GPIO_PK3 to overcome errors in tegra usb driver
+ */
 FIXED_REG(2,	usb1_vbus,	usb1_vbus,
-	NULL,	0,	0,	TEGRA_GPIO_PN5,
+	NULL,	0,	0,	TEGRA_GPIO_PK3,
 	true,	true,	0,	5000,	0);
 
 FIXED_REG(3,	usb2_vbus,	usb2_vbus,
-	NULL,	0,	0,	TEGRA_GPIO_PFF1,
+	NULL,	1,	0,	TEGRA_GPIO_PFF1,
 	true,	true,	0,	5000,	0);
 
 FIXED_REG(4,	vdd_sd,	vdd_sd,
@@ -846,17 +895,21 @@ FIXED_REG(16,	ti913_gpio3,	ti913_gpio3,
 	NULL,	0,	0,	PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO3,
 	false,	true,	0,	3300,	0);
 
-FIXED_REG(17,	ti913_gpio4,	ti913_gpio4,
-	NULL,	0,	0,	PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO4,
-	false,	true,	0,	1200,	0);
+#ifndef PBP5_EVT_BOARD
+FIXED_REG(17,  ti913_gpio4,    ti913_gpio4,
+	NULL,   0,      0,      PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO4,
+	false,  true,   0,      1200,   0);
+#endif
 
 FIXED_REG(18,	ti913_gpio6,	ti913_gpio6,
 	NULL,	0,	0,	PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO6,
 	false,	true,	0,	1200,	0);
 
-FIXED_REG(19,	ti913_gpio7,	ti913_gpio7,
-	NULL,	0,	0,	PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO7,
-	false,	true,	0,	1800,	0);
+#ifndef PBP5_EVT_BOARD
+FIXED_REG(19,  ti913_gpio7,    ti913_gpio7,
+	NULL,   0,      0,      PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO7,
+	false,  true,   0,      1800,   0);
+#endif
 
 FIXED_REG(20,	vdd_cpu_fixed,	vdd_cpu_fixed,
 	NULL,	0,	1,	-1,
@@ -866,9 +919,10 @@ FIXED_REG(21,	avdd_3v3_dp,	avdd_3v3_dp,
 	NULL,	0,	0,	TEGRA_GPIO_PH3,
 	false,	true,	0,	3300,	0);
 
-FIXED_REG(22,	en_bat,	en_bat,
-	NULL,	1,	1,	TEGRA_GPIO_PK5,
-	false,	true,	1,	1800,	0);
+FIXED_REG(22,	avdd_hdmi_pll,	avdd_hdmi_pll,
+	NULL,	0,	0,	TEGRA_GPIO_PN5,
+	false,	true,	0,	3300,	0);
+
 /*
  * Creating fixed regulator device tables
  */
@@ -882,8 +936,8 @@ FIXED_REG(22,	en_bat,	en_bat,
 	ADD_FIXED_REG(lcd_bl_en),		\
 	ADD_FIXED_REG(dcdc_1v8),		\
 	ADD_FIXED_REG(vdd_sys_5v0),		\
-	ADD_FIXED_REG(vdd_sd),			\
-	ADD_FIXED_REG(en_bat),
+	ADD_FIXED_REG(avdd_hdmi_pll),		\
+	ADD_FIXED_REG(vdd_sd),
 
 #define ARDBEG_E1733_FIXED_REG			\
 	ADD_FIXED_REG(as3722_gpio2),		\
@@ -893,6 +947,13 @@ FIXED_REG(22,	en_bat,	en_bat,
 	ADD_FIXED_REG(tca6408_p6),		\
 	ADD_FIXED_REG(tca6408_p0),
 
+#ifdef PBP5_EVT_BOARD
+#define ARDBEG_E1735_FIXED_REG			\
+	ADD_FIXED_REG(ti913_gpio2),		\
+	ADD_FIXED_REG(ti913_gpio3),		\
+	ADD_FIXED_REG(ti913_gpio6),		\
+	ADD_FIXED_REG(vdd_cpu_fixed),
+#else
 #define ARDBEG_E1735_FIXED_REG			\
 	ADD_FIXED_REG(ti913_gpio2),		\
 	ADD_FIXED_REG(ti913_gpio3),		\
@@ -900,6 +961,7 @@ FIXED_REG(22,	en_bat,	en_bat,
 	ADD_FIXED_REG(ti913_gpio6),		\
 	ADD_FIXED_REG(ti913_gpio7),		\
 	ADD_FIXED_REG(vdd_cpu_fixed),
+#endif
 
 #define ARDBEG_E1824_FIXED_REG			\
 	ADD_FIXED_REG(avdd_3v3_dp),
@@ -920,10 +982,9 @@ static struct platform_device *fixed_reg_devs_e1824[] = {
 
 /************************ ARDBEG CL-DVFS DATA *********************/
 #define E1735_CPU_VDD_MAP_SIZE		33
-#define E1735_CPU_VDD_MIN_UV		675000
-#define E1735_CPU_VDD_STEP_UV		18750
+#define E1735_CPU_VDD_MIN_UV		752000
+#define E1735_CPU_VDD_STEP_UV		16000
 #define E1735_CPU_VDD_STEP_US		80
-#define E1735_CPU_VDD_BOOT_UV		1000000
 #define E1735_CPU_VDD_IDLE_MA		5000
 #define ARDBEG_DEFAULT_CVB_ALIGNMENT	10000
 
@@ -942,12 +1003,26 @@ static struct tegra_cl_dvfs_cfg_param e1735_cl_dvfs_param = {
 	.scale_out_ramp = 0x0,
 };
 
+/* E1735 RT8812C volatge map */
+static struct voltage_reg_map e1735_cpu_vdd_map[E1735_CPU_VDD_MAP_SIZE];
+static inline int e1735_fill_reg_map(int nominal_mv)
+{
+	int i, uv, nominal_uv = 0;
+	for (i = 0; i < E1735_CPU_VDD_MAP_SIZE; i++) {
+		e1735_cpu_vdd_map[i].reg_value = i;
+		e1735_cpu_vdd_map[i].reg_uV = uv =
+			E1735_CPU_VDD_MIN_UV + E1735_CPU_VDD_STEP_UV * i;
+		if (!nominal_uv && uv >= nominal_mv * 1000)
+			nominal_uv = uv;
+	}
+	return nominal_uv;
+}
+
 /* E1735 dfll bypass device for legacy dvfs control */
 static struct regulator_consumer_supply e1735_dfll_bypass_consumers[] = {
 	REGULATOR_SUPPLY("vdd_cpu", NULL),
 };
-DFLL_BYPASS(e1735,
-	    E1735_CPU_VDD_MIN_UV, E1735_CPU_VDD_STEP_UV, E1735_CPU_VDD_BOOT_UV,
+DFLL_BYPASS(e1735, E1735_CPU_VDD_MIN_UV, E1735_CPU_VDD_STEP_UV,
 	    E1735_CPU_VDD_MAP_SIZE, E1735_CPU_VDD_STEP_US, TEGRA_GPIO_PX2);
 
 static struct tegra_cl_dvfs_platform_data e1735_cl_dvfs_data = {
@@ -955,27 +1030,23 @@ static struct tegra_cl_dvfs_platform_data e1735_cl_dvfs_data = {
 	.pmu_if = TEGRA_CL_DVFS_PMU_PWM,
 	.u.pmu_pwm = {
 		.pwm_rate = 12750000,
-		.min_uV = E1735_CPU_VDD_MIN_UV,
-		.step_uV = E1735_CPU_VDD_STEP_UV,
 		.pwm_pingroup = TEGRA_PINGROUP_DVFS_PWM,
-		.out_gpio = TEGRA_GPIO_PS5,
-		.out_enable_high = false,
 #ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
 		.dfll_bypass_dev = &e1735_dfll_bypass_dev,
 #endif
 	},
+	.vdd_map = e1735_cpu_vdd_map,
+	.vdd_map_size = E1735_CPU_VDD_MAP_SIZE,
 
 	.cfg_param = &e1735_cl_dvfs_param,
 };
 
 static void e1735_suspend_dfll_bypass(void)
 {
-	__gpio_set_value(TEGRA_GPIO_PS5, 1); /* tristate external PWM buffer */
 }
 
 static void e1735_resume_dfll_bypass(void)
 {
-	__gpio_set_value(TEGRA_GPIO_PS5, 0); /* enable PWM buffer operations */
 }
 
 static void e1767_suspend_dfll_bypass(void)
@@ -1027,62 +1098,81 @@ static struct tegra_cl_dvfs_platform_data e1733_cl_dvfs_data = {
 	.cfg_param = &e1733_ardbeg_cl_dvfs_param,
 };
 
-static void __init ardbeg_tweak_E1767_dt(void)
-{
-	struct device_node *dn = NULL;
-	struct property *pp = NULL;
+static struct tegra_cl_dvfs_cfg_param e1736_ardbeg_cl_dvfs_param = {
+	.sample_rate = 12500, /* i2c freq */
 
-	/*
-	 *  Update E1735 DT for E1767 prototype. To be removed when
-	 *  E1767 is productized with its own DT.
-	 */
-	dn = of_find_node_with_property(dn, "pwm-1wire-buffer");
-	if (dn) {
-		pp = of_find_property(dn, "pwm-1wire-buffer", NULL);
-		if (pp)
-			pp->name = "pwm-1wire-direct";
-		of_node_put(dn);
+	.force_mode = TEGRA_CL_DVFS_FORCE_FIXED,
+	.cf = 10,
+	.ci = 0,
+	.cg = 2,
+
+	.droop_cut_value = 0xF,
+	.droop_restore_ramp = 0x0,
+	.scale_out_ramp = 0x0,
+};
+
+/* E1736 volatge map. Fixed 10mv steps from 700mv to 1400mv */
+#define E1736_CPU_VDD_MAP_SIZE ((1400000 - 700000) / 10000 + 1)
+static struct voltage_reg_map e1736_cpu_vdd_map[E1736_CPU_VDD_MAP_SIZE];
+static inline void e1736_fill_reg_map(void)
+{
+	int i;
+	for (i = 0; i < E1736_CPU_VDD_MAP_SIZE; i++) {
+		/* 0.7V corresponds to 0b0011010 = 26 */
+		/* 1.4V corresponds to 0b1100000 = 96 */
+		e1736_cpu_vdd_map[i].reg_value = i + 26;
+		e1736_cpu_vdd_map[i].reg_uV = 700000 + 10000 * i;
 	}
-	if (!dn || !pp)
-		WARN(1, "Failed update DT for PMU E1767 prototype\n");
 }
 
+static struct tegra_cl_dvfs_platform_data e1736_cl_dvfs_data = {
+	.dfll_clk_name = "dfll_cpu",
+	.pmu_if = TEGRA_CL_DVFS_PMU_I2C,
+	.u.pmu_i2c = {
+		.fs_rate = 400000,
+		.slave_addr = 0xb0, /* pmu i2c address */
+		.reg = 0x23,        /* vdd_cpu rail reg address */
+	},
+	.vdd_map = e1736_cpu_vdd_map,
+	.vdd_map_size = E1736_CPU_VDD_MAP_SIZE,
+	.pmu_undershoot_gb = 100,
 
+	.cfg_param = &e1736_ardbeg_cl_dvfs_param,
+};
 static int __init ardbeg_cl_dvfs_init(struct board_info *pmu_board_info)
 {
 	u16 pmu_board_id = pmu_board_info->board_id;
 	struct tegra_cl_dvfs_platform_data *data = NULL;
+	int v = tegra_dvfs_rail_get_nominal_millivolts(tegra_cpu_rail);
+	bool e1767;
 
 	if (pmu_board_id == BOARD_E1735) {
-		bool e1767 = pmu_board_info->sku == E1735_EMULATE_E1767_SKU;
-		struct device_node *dn = of_find_compatible_node(
-			NULL, NULL, "nvidia,tegra124-dfll");
-		/*
-		 * Ardbeg platforms with E1735 PMIC module maybe used with
-		 * different DT variants. Some of them include CL-DVFS data
-		 * in DT, some - not. Check DT here, and continue with platform
-		 * device registration only if DT DFLL node is not present.
-		 */
-		if (dn) {
-			bool available = of_device_is_available(dn);
-			of_node_put(dn);
-
-			if (available) {
-				if (e1767)
-					ardbeg_tweak_E1767_dt();
-				return 0;
-			}
-		}
-
+		e1767 = pmu_board_info->sku == E1735_EMULATE_E1767_SKU;
+		pr_info("%s: PMU is%s""e1767", __func__,
+			e1767 ? " " : " not ");
+		v = e1735_fill_reg_map(v);
 		data = &e1735_cl_dvfs_data;
 
 		data->u.pmu_pwm.pwm_bus = e1767 ?
 			TEGRA_CL_DVFS_PWM_1WIRE_DIRECT :
 			TEGRA_CL_DVFS_PWM_1WIRE_BUFFER;
 
+		pr_info("%s: pwm_bus is %s", __func__,
+			e1767 ?
+			"TEGRA_CL_DVFS_PWM_1WIRE_DIRECT" :
+			"TEGRA_CL_DVFS_PWM_1WIRE_BUFFER");
+
 		if (data->u.pmu_pwm.dfll_bypass_dev) {
-			platform_device_register(
-				data->u.pmu_pwm.dfll_bypass_dev);
+			/* this has to be exact to 1uV level from table */
+			e1735_dfll_bypass_init_data.constraints.init_uV = v;
+			ardbeg_suspend_data.suspend_dfll_bypass = e1767 ?
+				e1767_suspend_dfll_bypass :
+				e1735_suspend_dfll_bypass;
+			ardbeg_suspend_data.resume_dfll_bypass = e1767 ?
+				e1767_resume_dfll_bypass :
+				e1735_resume_dfll_bypass;
+			tegra_init_cpu_reg_mode_limits(E1735_CPU_VDD_IDLE_MA,
+						       REGULATOR_MODE_IDLE);
 		} else {
 			(void)e1735_dfll_bypass_dev;
 		}
@@ -1092,6 +1182,15 @@ static int __init ardbeg_cl_dvfs_init(struct board_info *pmu_board_info)
 	if (pmu_board_id == BOARD_E1733) {
 		e1733_fill_reg_map();
 		data = &e1733_cl_dvfs_data;
+		as3722_sd0_reg_pdata.volatile_vsel = true;
+	}
+
+	if (pmu_board_id == BOARD_E1736 ||
+		pmu_board_id == BOARD_E1936 ||
+		pmu_board_id == BOARD_E1769 ||
+		pmu_board_id == BOARD_P1761) {
+		e1736_fill_reg_map();
+		data = &e1736_cl_dvfs_data;
 	}
 
 	if (data) {
@@ -1112,15 +1211,73 @@ int __init ardbeg_rail_alignment_init(void)
 
 	tegra_get_pmu_board_info(&pmu_board_info);
 
-#ifdef CONFIG_ARCH_TEGRA_13x_SOC
-#else
 	if (pmu_board_info.board_id == BOARD_E1735)
 		tegra12x_vdd_cpu_align(E1735_CPU_VDD_STEP_UV,
 				       E1735_CPU_VDD_MIN_UV);
 	else
 		tegra12x_vdd_cpu_align(ARDBEG_DEFAULT_CVB_ALIGNMENT, 0);
-#endif
 	return 0;
+}
+
+static void yellowstone_charger_init(void)
+{
+	int ret = 0;
+
+	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY) {
+
+		switch (get_cci_hw_id()) {
+		case EVT:
+		case DVT_DEMO:
+		case DVT1_1:
+		case DVT1_2:
+		case DVT2:
+		case DVT3:
+		case PVT:
+			ret = gpio_request(TEGRA_GPIO_PK5, "bq2477x-charger");
+			if (ret < 0) {
+				pr_err("%s: charger_enable TEGRA_GPIO_PK5 request failed\n",
+					__func__);
+			} else {
+				ret = gpio_direction_output(TEGRA_GPIO_PK5, 1);
+				if (ret < 0)
+					pr_err("%s: TEGRA_GPIO_PK5 direction failed\n",
+						__func__);
+			}
+			msleep(20);
+		default:
+			break;
+		}
+
+		switch (get_cci_hw_id()) {
+		case EVT:
+		case DVT_DEMO:
+			ret = gpio_request(TEGRA_GPIO_PK3, "charger_enable");
+			if (ret < 0) {
+				pr_err("%s: charger_enable TEGRA_GPIO_PK3 request failed\n",
+					__func__);
+			} else {
+				int value;
+
+				if (get_cci_hw_id() == EVT)
+					value = 1;
+				else
+					value = 0;
+
+				ret = gpio_direction_output(TEGRA_GPIO_PK3,
+									value);
+				if (ret < 0)
+					pr_err("%s: TEGRA_GPIO_PK3 direction %d failed\n",
+						__func__, value);
+			}
+		default:
+			break;
+		}
+
+		platform_device_register(&yellowstone_bq2477x_extcon);
+
+		i2c_register_board_info(1, bq2477x_boardinfo,
+			ARRAY_SIZE(bq2477x_boardinfo));
+	}
 }
 
 int __init ardbeg_regulator_init(void)
@@ -1138,23 +1295,20 @@ int __init ardbeg_regulator_init(void)
 	} else if (pmu_board_info.board_id == BOARD_E1735) {
 		regulator_has_full_constraints();
 		ardbeg_tps65913_regulator_init();
-#ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
-		tegra_init_cpu_reg_mode_limits(
-			E1735_CPU_VDD_IDLE_MA, REGULATOR_MODE_IDLE);
-#endif
 	} else if (pmu_board_info.board_id == BOARD_E1736 ||
 		pmu_board_info.board_id == BOARD_E1936 ||
 		pmu_board_info.board_id == BOARD_E1769 ||
 		pmu_board_info.board_id == BOARD_P1761) {
 		tn8_regulator_init();
+		ardbeg_cl_dvfs_init(&pmu_board_info);
 		return tn8_fixed_regulator_init();
 	} else {
 		pr_warn("PMU board id 0x%04x is not supported\n",
 			pmu_board_info.board_id);
 	}
 
-	if (pmu_board_info.board_id != BOARD_E1735)
-		platform_device_register(&power_supply_extcon_device);
+	platform_device_register(&power_supply_extcon_device);
+	yellowstone_charger_init();
 
 	ardbeg_cl_dvfs_init(&pmu_board_info);
 	return 0;
@@ -1196,55 +1350,19 @@ static int __init ardbeg_fixed_regulator_init(void)
 
 subsys_initcall_sync(ardbeg_fixed_regulator_init);
 
-int __init ardbeg_suspend_init(void)
-{
-	struct board_info pmu_board_info;
-
-	tegra_get_pmu_board_info(&pmu_board_info);
-
-	if (pmu_board_info.board_id == BOARD_E1735) {
-		struct tegra_suspend_platform_data *data = &ardbeg_suspend_data;
-		if (pmu_board_info.sku != E1735_EMULATE_E1767_SKU) {
-			data->cpu_timer = 2000;
-			data->crail_up_early = true;
-#ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
-			data->suspend_dfll_bypass = e1735_suspend_dfll_bypass;
-			data->resume_dfll_bypass = e1735_resume_dfll_bypass;
-		} else {
-			data->suspend_dfll_bypass = e1767_suspend_dfll_bypass;
-			data->resume_dfll_bypass = e1767_resume_dfll_bypass;
-#endif
-		}
-	}
-
-	tegra_init_suspend(&ardbeg_suspend_data);
-	return 0;
-}
-
 int __init ardbeg_edp_init(void)
 {
 	unsigned int regulator_mA;
-	struct board_info board_info;
-
-	tegra_get_board_info(&board_info);
 
 	regulator_mA = get_maximum_cpu_current_supported();
-	if (!regulator_mA) {
-		if (board_info.board_id == BOARD_PM375)
-			regulator_mA = 11000;
-		else
-			regulator_mA = 14000;
-	}
+	if (!regulator_mA)
+		regulator_mA = 14000;
 
 	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
 	tegra_init_cpu_edp_limits(regulator_mA);
 
 	/* gpu maximum current */
-	if (board_info.board_id == BOARD_PM375)
-		regulator_mA = 11400;
-	else
-		regulator_mA = 12000;
-
+	regulator_mA = 12000;
 	pr_info("%s: GPU regulator %d mA\n", __func__, regulator_mA);
 
 	tegra_init_gpu_edp_limits(regulator_mA);
@@ -1469,7 +1587,6 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 				[THROTTLE_DEV_CPU] = {
 					.enable = true,
 					.depth = 80,
-					.throttling_depth = "heavy_throttling",
 				},
 				[THROTTLE_DEV_GPU] = {
 					.enable = true,
@@ -1478,6 +1595,7 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 			},
 		},
 	},
+	.tshut_pmu_trip_data = &tpdata_palmas,
 };
 
 static struct soctherm_throttle battery_oc_throttle = {
@@ -1488,7 +1606,6 @@ static struct soctherm_throttle battery_oc_throttle = {
 		[THROTTLE_DEV_CPU] = {
 			.enable = true,
 			.depth = 50,
-			.throttling_depth = "medium_throttling",
 		},
 		[THROTTLE_DEV_GPU] = {
 			.enable = true,
@@ -1512,7 +1629,22 @@ static struct soctherm_throttle voltmon_throttle = {
 			.divisor = 255,
 			.duration = 0,
 			.step = 0,
+		},
+		[THROTTLE_DEV_GPU] = {
+			.enable = true,
 			.throttling_depth = "medium_throttling",
+		},
+	},
+};
+
+struct soctherm_throttle baseband_throttle = {
+	.throt_mode = BRIEF,
+	.polarity = SOCTHERM_ACTIVE_HIGH,
+	.priority = 50,
+	.devs = {
+		[THROTTLE_DEV_CPU] = {
+			.enable = true,
+			.depth = 50,
 		},
 		[THROTTLE_DEV_GPU] = {
 			.enable = true,
@@ -1563,8 +1695,6 @@ int __init ardbeg_soctherm_init(void)
 
 	if (board_info.board_id == BOARD_P1761 ||
 		board_info.board_id == BOARD_E1784 ||
-		board_info.board_id == BOARD_E1971 ||
-		board_info.board_id == BOARD_E1991 ||
 		board_info.board_id == BOARD_E1922) {
 		tegra_add_cpu_vmin_trips(
 			ardbeg_soctherm_data.therm[THERM_CPU].trips,
@@ -1585,12 +1715,10 @@ int __init ardbeg_soctherm_init(void)
 	else if (pmu_board_info.board_id == BOARD_E1735 ||
 		 pmu_board_info.board_id == BOARD_E1736 ||
 		 pmu_board_info.board_id == BOARD_E1769 ||
-		 pmu_board_info.board_id == BOARD_P1761 ||
 		 pmu_board_info.board_id == BOARD_E1936)
-		ardbeg_soctherm_data.tshut_pmu_trip_data = &tpdata_palmas;
+		;/* tpdata_palmas is default */
 	else
-		pr_warn("soctherm THERMTRIP not supported on PMU (BOARD_E%d)\n",
-			pmu_board_info.board_id);
+		pr_warn("soctherm THERMTRIP is not supported on this PMIC\n");
 
 	/* Enable soc_therm OC throttling on selected platforms */
 	switch (pmu_board_info.board_id) {
@@ -1605,6 +1733,20 @@ int __init ardbeg_soctherm_init(void)
 		break;
 	default:
 		break;
+	}
+
+	/* enable baseband OC if Bruce modem is enabled */
+	if (tegra_get_modem_id() == TEGRA_BB_BRUCE) {
+		/* enable baseband OC unless board has voltage comparator */
+		int board_has_vc;
+
+		board_has_vc = (pmu_board_info.board_id == BOARD_P1761)
+			&& (pmu_board_info.fab >= BOARD_FAB_A02);
+
+		if (!board_has_vc)
+			memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC3],
+			       &baseband_throttle,
+			       sizeof(baseband_throttle));
 	}
 
 	return tegra11_soctherm_init(&ardbeg_soctherm_data);

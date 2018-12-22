@@ -1,6 +1,4 @@
 /*
- * Copyright (C) 2011-2014, NVIDIA Corporation. All rights reserved.
- *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
@@ -43,18 +41,27 @@ extern struct device tegra_generic_cma_dev;
 extern struct device tegra_vpr_cma_dev;
 extern int tegra_with_secure_firmware;
 
-extern struct device tegra_generic_dev;
-extern struct device tegra_vpr_dev;
-extern struct device tegra_iram_dev;
-extern struct dma_resize_notifier_ops vpr_dev_ops;
-
 u32 tegra_get_sku_id(void);
 u32 tegra_get_chip_id(void);
 u32 tegra_get_bct_strapping(void);
 void __init display_tegra_dt_info(void);
-
 static inline int tegra_cpu_is_secure(void)
 {
-	return tegra_with_secure_firmware;
+        return tegra_with_secure_firmware;
 }
+
 #endif
+enum {
+	HWID_INVALID = -1,
+	EVT = 0,
+	DVT_DEMO,
+	DVT1_1,
+	DVT1_2,
+	DVT2,
+	DVT3,
+	PVT,
+};
+
+extern int get_cci_hw_id(void);
+extern int cci_hw_id;
+extern int ccibootmode;

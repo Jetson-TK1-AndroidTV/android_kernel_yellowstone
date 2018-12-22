@@ -1,7 +1,7 @@
 /*
  * Driver for the NVIDIA Tegra pinmux
  *
- * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * Derived from code:
  * Copyright (C) 2010 Google, Inc.
@@ -32,12 +32,13 @@
 #include <linux/syscore_ops.h>
 #include <linux/uaccess.h>
 #include <linux/pinctrl/pinctrl-tegra.h>
-
 #include <mach/pinconf-tegra.h>
 #include <mach/pinmux-defines.h>
+#include <mach/gpio-tegra.h>
 
 #include "core.h"
 #include "pinctrl-tegra.h"
+#include <../mach-tegra/common.h>
 
 static DEFINE_SPINLOCK(mux_lock);
 
@@ -50,7 +51,6 @@ struct tegra_pmx {
 	int nbanks;
 	void __iomem **regs;
 	int *regs_size;
-	unsigned int *reg_base;
 
 	u32 *pg_data;
 	unsigned drive_group_start_index;
@@ -541,7 +541,7 @@ static int tegra_pinconf_reg(struct tegra_pmx *pmx,
 		return -ENOTSUPP;
 	}
 
-	if (*reg < 0 || *bit < 0) {
+	if (*reg < 0) {
 		if (report_err)
 			dev_err(pmx->dev,
 				"Config param %04x not supported on group %s\n",
@@ -789,8 +789,6 @@ static void pinctrl_resume(void)
 static struct syscore_ops pinctrl_syscore_ops = {
 	.suspend = pinctrl_suspend,
 	.resume = pinctrl_resume,
-	.save = pinctrl_suspend,
-	.restore = pinctrl_resume,
 };
 
 #endif
@@ -830,38 +828,31 @@ static void tegra_pinctrl_default_soc_init(struct tegra_pmx *pmx)
 			continue;
 		}
 
-		if (pmx->soc->groups[i].hsm_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_HIGH_SPEED_MODE,
 				cdata->high_speed_mode);
 
-		if (pmx->soc->groups[i].schmitt_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_SCHMITT,
 				cdata->schmitt);
 
-		if (pmx->soc->groups[i].lpmd_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_LOW_POWER_MODE,
 				cdata->low_power_mode);
 
-		if (pmx->soc->groups[i].drvdn_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_DRIVE_DOWN_STRENGTH,
 				cdata->pull_down_strength);
 
-		if (pmx->soc->groups[i].drvup_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_DRIVE_UP_STRENGTH,
 				cdata->pull_up_strength);
 
-		if (pmx->soc->groups[i].slwf_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_SLEW_RATE_FALLING,
 				cdata->slew_rate_falling);
 
-		if (pmx->soc->groups[i].slwr_bit >= 0)
-			tegra_pinctrl_set_config(pmx->pctl, group,
+		tegra_pinctrl_set_config(pmx->pctl, group,
 				TEGRA_PINCONF_PARAM_SLEW_RATE_RISING,
 				cdata->slew_rate_rising);
 
@@ -915,14 +906,6 @@ int tegra_pinctrl_probe(struct platform_device *pdev,
 		return -ENODEV;
 	}
 
-	pmx->reg_base = devm_kzalloc(&pdev->dev, pmx->nbanks *
-					sizeof(*pmx->reg_base), GFP_KERNEL);
-	if (!pmx->reg_base) {
-		dev_err(&pdev->dev, "Can't alloc reg_base pointer\n");
-		return -ENOMEM;
-	}
-
-
 #ifdef CONFIG_PM_SLEEP
 	pmx->regs_size = devm_kzalloc(&pdev->dev,
 				pmx->nbanks * sizeof(*(pmx->regs_size)),
@@ -954,7 +937,6 @@ int tegra_pinctrl_probe(struct platform_device *pdev,
 			return -ENODEV;
 		}
 
-		pmx->reg_base[i] = res->start;
 		pmx->regs[i] = devm_ioremap(&pdev->dev, res->start,
 					    resource_size(res));
 		if (!pmx->regs[i]) {
@@ -986,6 +968,21 @@ int tegra_pinctrl_probe(struct platform_device *pdev,
 	register_syscore_ops(&pinctrl_syscore_ops);
 #endif
 	dev_dbg(&pdev->dev, "Probed Tegra pinctrl driver\n");
+
+    switch (get_cci_hw_id()){
+        case EVT:
+        case DVT_DEMO:
+        case DVT1_1:
+        case DVT1_2:
+        case DVT2:
+            break;
+        case DVT3:
+        case PVT:
+            yellowstone_pinmux_init();
+            break;
+        default:
+            break;
+    }
 
 	return 0;
 }
@@ -1020,10 +1017,10 @@ static const char *tegra_pinctrl_slew_names[TEGRA_MAX_SLEW] = {
 #define HSM_EN(reg)     (((reg) >> 2) & 0x1)
 #define SCHMT_EN(reg)   (((reg) >> 3) & 0x1)
 #define LPMD(reg)       (((reg) >> 4) & 0x3)
-#define DRVDN(reg, offset, w)      (((reg) >> offset) & (BIT(w) -1))
-#define DRVUP(reg, offset, w)      (((reg) >> offset) & (BIT(w) -1))
-#define SLWR(reg, offset, w)       (((reg) >> offset) & (BIT(w) -1))
-#define SLWF(reg, offset, w)       (((reg) >> offset) & (BIT(w) -1))
+#define DRVDN(reg, offset)      (((reg) >> offset) & 0x1f)
+#define DRVUP(reg, offset)      (((reg) >> offset) & 0x1f)
+#define SLWR(reg, offset)       (((reg) >> offset) & 0x3)
+#define SLWF(reg, offset)       (((reg) >> offset) & 0x3)
 
 static const char *tegra_pinctrl_function_name(enum tegra_mux_func func)
 {
@@ -1986,8 +1983,7 @@ static int dbg_pinmux_open(struct inode *inode, struct file *file)
  *	to tegra_pinmux
  * ex) # echo "HDMI_CEC CEC OUTPUT NORMAL TRISTATE" > /d/tegra_pinmux
  */
-#define FIELD_DELIMITER	" "
-#define LINE_DELIMITER	"\n"
+#define DELIMITER "\n"
 static ssize_t dbg_pinmux_write(struct file *file,
 	const char __user *userbuf, size_t count, loff_t *ppos)
 {
@@ -2005,9 +2001,9 @@ static ssize_t dbg_pinmux_write(struct file *file,
 	pr_debug("%s buf: %s\n", __func__, buf);
 
 	/* ping group index by name */
-	token = strsep(&pbuf, FIELD_DELIMITER);
+	token = strsep(&pbuf, DELIMITER);
 	for (i = 0; i < pmx->soc->ngroups; i++)
-		if (!strcasecmp(token, pmx->soc->groups[i].name))
+		if (!strcmp(token, pmx->soc->groups[i].name))
 			break;
 	if (i == pmx->soc->ngroups) { /* no pingroup matched with name */
 		pr_err("no pingroup matched with name\n");
@@ -2016,9 +2012,9 @@ static ssize_t dbg_pinmux_write(struct file *file,
 	pg_config.pingroup = i;
 
 	/* func index by name */
-	token = strsep(&pbuf, FIELD_DELIMITER);
+	token = strsep(&pbuf, DELIMITER);
 	for (i = 0; i < TEGRA_MAX_MUX; i++)
-		if (!strcasecmp(token, tegra_pinctrl_function_name(i)))
+		if (!strcmp(token, tegra_pinctrl_function_name(i)))
 			break;
 	if (i == TEGRA_MAX_MUX) { /* no func matched with name */
 		pr_err("no func matched with name\n");
@@ -2027,9 +2023,9 @@ static ssize_t dbg_pinmux_write(struct file *file,
 	pg_config.func = i;
 
 	/* i/o by name */
-	token = strsep(&pbuf, FIELD_DELIMITER);
-	i = !strcasecmp(token, "OUTPUT") ? 0 :
-		!strcasecmp(token, "INPUT") ? 1 : -1;
+	token = strsep(&pbuf, DELIMITER);
+	i = !strcmp(token, "OUTPUT") ? 0 :
+		!strcmp(token, "INPUT") ? 1 : -1;
 	if (i == -1) { /* no IO matched with name */
 		pr_err("no IO matched with name\n");
 		return -EINVAL;
@@ -2037,10 +2033,10 @@ static ssize_t dbg_pinmux_write(struct file *file,
 	pg_config.io = i;
 
 	/* pull up/down by name */
-	token = strsep(&pbuf, FIELD_DELIMITER);
-	i = !strcasecmp(token, "NORMAL") ? 0 :
-		!strcasecmp(token, "PULL_DOWN") ? 1 :
-		!strcasecmp(token, "PULL_UP") ? 2 : -1;
+	token = strsep(&pbuf, DELIMITER);
+	i = !strcmp(token, "NORMAL") ? 0 :
+		!strcmp(token, "PULL_DOWN") ? 1 :
+		!strcmp(token, "PULL_UP") ? 2 : -1;
 	if (i == -1) { /* no PUPD matched with  name */
 		pr_err("no PUPD matched with  name\n");
 		return -EINVAL;
@@ -2048,9 +2044,9 @@ static ssize_t dbg_pinmux_write(struct file *file,
 	pg_config.pupd = i;
 
 	/* tristate by name */
-	token = strsep(&pbuf, LINE_DELIMITER);
-	i = !strcasecmp(token, "NORMAL") ? 0 :
-		!strcasecmp(token, "TRISTATE") ? 1 : -1;
+	token = strsep(&pbuf, DELIMITER);
+	i = !strcmp(token, "NORMAL") ? 0 :
+		!strcmp(token, "TRISTATE") ? 1 : -1;
 	if (i == -1) { /* no tristate matched with name */
 		pr_err("no tristate matched with name\n");
 		return -EINVAL;
@@ -2080,7 +2076,6 @@ static int dbg_drive_pinmux_show(struct seq_file *s, void *unused)
 	int i;
 	int len;
 	u8 offset;
-	unsigned int width;
 
 	for (i = 0; i < pmx->soc->ngroups; i++) {
 		u32 reg;
@@ -2095,88 +2090,45 @@ static int dbg_drive_pinmux_show(struct seq_file *s, void *unused)
 
 		reg = pmx_readl(pmx, pmx->soc->groups[i].drv_bank,
 					pmx->soc->groups[i].drv_reg);
-		if (pmx->soc->groups[i].hsm_bit >= 0) {
-			if (HSM_EN(reg)) {
-				seq_puts(s, "TEGRA_HSM_ENABLE");
-				len = 16;
-			} else {
-				seq_puts(s, "TEGRA_HSM_DISABLE");
-				len = 17;
-			}
-		} else {
-			seq_puts(s, "TEGRA_HSM_XXXXXX");
+		if (HSM_EN(reg)) {
+			seq_puts(s, "TEGRA_HSM_ENABLE");
 			len = 16;
+		} else {
+			seq_puts(s, "TEGRA_HSM_DISABLE");
+			len = 17;
 		}
-
 		dbg_pad_field(s, 17 - len);
 
-		if (pmx->soc->groups[i].schmitt_bit >= 0) {
-			if (SCHMT_EN(reg)) {
-				seq_puts(s, "TEGRA_SCHMITT_ENABLE");
-				len = 21;
-			} else {
-				seq_puts(s, "TEGRA_SCHMITT_DISABLE");
-				len = 22;
-			}
+		if (SCHMT_EN(reg)) {
+			seq_puts(s, "TEGRA_SCHMITT_ENABLE");
+			len = 21;
 		} else {
-			seq_puts(s, "TEGRA_SCHMITT_XXXXXXX");
+			seq_puts(s, "TEGRA_SCHMITT_DISABLE");
 			len = 22;
 		}
 		dbg_pad_field(s, 22 - len);
 
-		if (pmx->soc->groups[i].lpmd_bit < 0) {
-			seq_printf(s, "TEGRA_DRIVE_XXXXX");
-			len = 5;
-		} else {
-			seq_printf(s, "TEGRA_DRIVE_%s", drive_name(LPMD(reg)));
-			len = strlen(drive_name(LPMD(reg)));
-		}
+		seq_printf(s, "TEGRA_DRIVE_%s", drive_name(LPMD(reg)));
+		len = strlen(drive_name(LPMD(reg)));
 		dbg_pad_field(s, 5 - len);
 
-		if (pmx->soc->groups[i].drvdn_bit >= 0) {
-			offset = pmx->soc->groups[i].drvdn_bit;
-			width = pmx->soc->groups[i].drvdn_width;
-			seq_printf(s, "TEGRA_PULL_%lu",
-					DRVDN(reg, offset, width));
-			len = DRVDN(reg, offset, width) < 10 ? 1 : 2;
-		} else {
-			seq_printf(s, "TEGRA_PULL_XXX");
-			len = 1;
-		}
+		offset = pmx->soc->groups[i].drvdn_bit;
+		seq_printf(s, "TEGRA_PULL_%d", DRVDN(reg, offset));
+		len = DRVDN(reg, offset) < 10 ? 1 : 2;
 		dbg_pad_field(s, 2 - len);
 
-		if (pmx->soc->groups[i].drvup_bit >= 0) {
-			offset = pmx->soc->groups[i].drvup_bit;
-			width = pmx->soc->groups[i].drvup_width;
-			seq_printf(s, "TEGRA_PULL_%lu",
-					DRVUP(reg, offset, width));
-			len = DRVUP(reg, offset, width) < 10 ? 1 : 2;
-		} else {
-			seq_printf(s, "TEGRA_PULL_XXX");
-			len = 1;
-		}
+		offset = pmx->soc->groups[i].drvup_bit;
+		seq_printf(s, "TEGRA_PULL_%d", DRVUP(reg, offset));
+		len = DRVUP(reg, offset) < 10 ? 1 : 2;
 		dbg_pad_field(s, 2 - len);
 
-		if (pmx->soc->groups[i].slwr_bit >= 0) {
-			offset = pmx->soc->groups[i].slwr_bit;
-			width = pmx->soc->groups[i].slwr_width;
-			seq_printf(s, "TEGRA_SLEW_%s",
-				slew_name(SLWR(reg, offset, width)));
-			len = strlen(slew_name(SLWR(reg, offset, width)));
-		} else {
-			seq_printf(s, "TEGRA_SLEW_XXXXXXX");
-			len = 7;
-		}
+		offset = pmx->soc->groups[i].slwr_bit;
+		seq_printf(s, "TEGRA_SLEW_%s", slew_name(SLWR(reg, offset)));
+		len = strlen(slew_name(SLWR(reg, offset)));
 		dbg_pad_field(s, 7 - len);
 
-		if (pmx->soc->groups[i].slwf_bit >= 0) {
-			offset = pmx->soc->groups[i].slwf_bit;
-			width = pmx->soc->groups[i].slwf_width;
-			seq_printf(s, "TEGRA_SLEW_%s",
-				slew_name(SLWF(reg, offset, width)));
-		} else {
-			seq_printf(s, "TEGRA_SLEW_XXXXXXX");
-		}
+		offset = pmx->soc->groups[i].slwf_bit;
+		seq_printf(s, "TEGRA_SLEW_%s", slew_name(SLWF(reg, offset)));
 
 		seq_puts(s, "},\n");
 	}
@@ -2211,9 +2163,8 @@ static int dbg_reg_pinmux_show(struct seq_file *s, void *unused)
 			offset = pmx->soc->groups[i].drv_reg;
 		}
 		reg = pmx_readl(pmx, bank, offset);
-		seq_printf(s, "Bank: %d Reg: 0x%08x Val: 0x%08x -> %s\n",
-				bank, pmx->reg_base[bank] + offset, reg,
-				pmx->soc->groups[i].name);
+		seq_printf(s, "Bank: %d Reg: 0x%08x Val: 0x%08x\n",
+			bank, offset, reg);
 	}
 	return 0;
 }
