@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-ardbeg.h
  *
- * Copyright (c) 2013-2014, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -21,7 +21,6 @@
 #define _MACH_TEGRA_BOARD_ARDBEG_H
 
 #include <linux/mfd/as3722-plat.h>
-#include <linux/mfd/as3722.h>
 #include <mach/gpio-tegra.h>
 #include <mach/irqs.h>
 #include "gpio-names.h"
@@ -35,6 +34,7 @@ void arbdeg_sata_clk_gate(void);
 int ardbeg_sensors_init(void);
 int ardbeg_regulator_init(void);
 int ardbeg_suspend_init(void);
+int ardbeg_pmon_init(void);
 int ardbeg_rail_alignment_init(void);
 int ardbeg_soctherm_init(void);
 int ardbeg_edp_init(void);
@@ -45,7 +45,7 @@ void shield_sysedp_batmon_init(void);
 
 /* Invensense MPU Definitions */
 #define MPU_GYRO_NAME			"mpu9250"
-#define MPU_GYRO_IRQ_GPIO		TEGRA_GPIO_PS0
+#define MPU_GYRO_IRQ_GPIO		TEGRA_GPIO_PR4
 #define MPU_GYRO_ADDR			0x69
 #define MPU_GYRO_BUS_NUM		0
 #define MPU_GYRO_ORIENTATION		MTMAT_TOP_CCW_0
@@ -61,6 +61,14 @@ void shield_sysedp_batmon_init(void);
 #define TEGRA_SOC_OC_IRQ_BASE	TEGRA_NR_IRQS
 #define TEGRA_SOC_OC_NUM_IRQ	TEGRA_SOC_OC_IRQ_MAX
 
+/* PCA954x I2C bus expander bus addresses */
+#define PCA954x_I2C_BUS_BASE    6
+#define PCA954x_I2C_BUS0        (PCA954x_I2C_BUS_BASE + 0)
+#define PCA954x_I2C_BUS1        (PCA954x_I2C_BUS_BASE + 1)
+#define PCA954x_I2C_BUS2        (PCA954x_I2C_BUS_BASE + 2)
+#define PCA954x_I2C_BUS3        (PCA954x_I2C_BUS_BASE + 3)
+
+
 #define PALMAS_TEGRA_GPIO_BASE	TEGRA_NR_GPIOS
 #define PALMAS_TEGRA_IRQ_BASE	(TEGRA_SOC_OC_IRQ_BASE + TEGRA_SOC_OC_NUM_IRQ)
 #define AS3722_GPIO_BASE	TEGRA_NR_GPIOS
@@ -73,25 +81,25 @@ void shield_sysedp_batmon_init(void);
 /* External peripheral act as interrupt controller */
 /* AS3720 IRQs */
 #define AS3722_IRQ_BASE         (TEGRA_SOC_OC_IRQ_BASE + TEGRA_SOC_OC_NUM_IRQ)
-#define AS3722_IRQ_END		(AS3722_IRQ_BASE + AS3722_IRQ_MAX)
-
-/* TCA6416 IRQ */
-#define PMU_TCA6416_IRQ_BASE	AS3722_IRQ_END
-#define PMU_TCA6416_IRQ_END	(PMU_TCA6416_IRQ_BASE + 16)
 
 #define CAM_RSTN TEGRA_GPIO_PBB3
+#define CAM1_RSTN TEGRA_GPIO_PCC1
+#define CAM2_RSTN TEGRA_GPIO_PCC2
 #define CAM_FLASH_STROBE TEGRA_GPIO_PBB4
 #define CAM2_PWDN TEGRA_GPIO_PBB6
 #define CAM1_PWDN TEGRA_GPIO_PBB5
 #define CAM_AF_PWDN TEGRA_GPIO_PBB7
 #define CAM_BOARD_E1806
 
+#ifndef CCI_IO
+#define FCAM_PWDN TEGRA_GPIO_PBB4
+#endif
+
 /* Modem related GPIOs */
 #define MODEM_EN		TEGRA_GPIO_PS4
 #define MDM_RST			TEGRA_GPIO_PS3
 #define MDM_COLDBOOT		TEGRA_GPIO_PO5
 #define MDM_SAR0		TEGRA_GPIO_PG2
-#define MDM_POWER_REPORT	TEGRA_GPIO_PK0
 
 /* Baseband IDs */
 enum tegra_bb_type {
@@ -105,22 +113,24 @@ enum tegra_bb_type {
 #define HSIC2_PORT_OWNER_XUSB   0x8
 
 /* Touchscreen definitions */
-#define TOUCH_GPIO_IRQ_RAYDIUM_SPI	TEGRA_GPIO_PK2
+#define TOUCH_GPIO_IRQ_RAYDIUM_SPI	TEGRA_GPIO_PK2 //TEGRA_GPIO_PK2 for nfc I2C_REQ DVT1-2 TEST
 #define TOUCH_GPIO_RST_RAYDIUM_SPI	TEGRA_GPIO_PK4
 #define TOUCH_SPI_ID			0	/*SPI 1 on ardbeg_interposer*/
 #define TOUCH_SPI_CS			0	/*CS  0 on ardbeg_interposer*/
 #define NORRIN_TOUCH_SPI_ID			2	/*SPI 2 on Norrin*/
 #define NORRIN_TOUCH_SPI_CS			1	/*CS  1 on Norrin*/
 
-#define TOUCH_GPIO_IRQ_MAXIM_STI_SPI	TEGRA_GPIO_PK2
+#define TOUCH_GPIO_SDN_MAXIM_STI_SPI	TEGRA_GPIO_PK1
+#define TOUCH_GPIO_IRQ_MAXIM_STI_SPI	TEGRA_GPIO_PK2 //TEGRA_GPIO_PK2 for nfc I2C_REQ DVT1-2 TEST
 #define TOUCH_GPIO_RST_MAXIM_STI_SPI	TEGRA_GPIO_PK4
 
 /* Audio-related GPIOs */
 /*Same GPIO's used for T114(Interposer) and T124*/
 /*Below GPIO's are same for Laguna and Ardbeg*/
 #define TEGRA_GPIO_CDC_IRQ	TEGRA_GPIO_PH4
-#define TEGRA_GPIO_HP_DET	TEGRA_GPIO_PR7
-#define NORRIN_GPIO_HP_DET	TEGRA_GPIO_PI7
+// #define TEGRA_GPIO_HP_DET		TEGRA_GPIO_PR7
+#define TEGRA_GPIO_HP_DET		TEGRA_GPIO_PH4
+
 /*LDO_EN signal is required only for RT5639 and not for RT5645,
 on Laguna the LDO_EN signal comes from a GPIO expander and
 this is exposed as a fixed regulator directly handeled from
@@ -152,27 +162,11 @@ GPIO, also the GPIO is same for T114 interposer and T124*/
 
 int laguna_pinmux_init(void);
 int laguna_regulator_init(void);
+int laguna_pm358_pmon_init(void);
 int laguna_edp_init(void);
 
 /* Norrin specific */
 int norrin_regulator_init(void);
-int norrin_kbc_init(void);
-int norrin_soctherm_init(void);
-int norrin_emc_init(void);
-
-/* loki specific */
-int loki_pinmux_init(void);
-int loki_regulator_init(void);
-int loki_emc_init(void);
-int loki_sdhci_init(void);
-int loki_pmon_init(void);
-int loki_panel_init(void);
-int loki_kbc_init(void);
-int loki_sensors_init(void);
-int loki_soctherm_init(void);
-int loki_edp_init(void);
-int loki_fan_init(void);
-int loki_rail_alignment_init(void);
 
 /* AUO Display related GPIO */
 #define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PH3 /* GMI_AD11 */
@@ -195,6 +189,17 @@ int tn8_fixed_regulator_init(void);
 int tn8_edp_init(void);
 void tn8_new_sysedp_init(void);
 void tn8_sysedp_dynamic_capping_init(void);
+
+int tn8_p1761_pmon_init(void);
+
+/* YellowStone specific */
+int yellowstone_regulator_init(void);
+int yellowstone_fixed_regulator_init(void);
+int yellowstone_edp_init(void);
+void yellowstone_new_sysedp_init(void);
+void yellowstone_sysedp_dynamic_capping_init(void);
+
+int yellowstone_p1761_pmon_init(void);
 
 /* SATA Specific */
 

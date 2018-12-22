@@ -31,7 +31,6 @@
 #include <linux/of_address.h>
 #include <linux/dma-contiguous.h>
 #include <linux/clk.h>
-#include <linux/dma-mapping.h>
 
 #include <mach/irqs.h>
 #include <mach/dc.h>
@@ -275,7 +274,8 @@ static int ardbeg_hdmi_hotplug_init(struct device *dev)
 {
 	if (!ardbeg_hdmi_vddio) {
 #ifdef CONFIG_TEGRA_HDMI_PRIMARY
-		if (of_machine_is_compatible("nvidia,tn8"))
+		if (of_machine_is_compatible("nvidia,tn8") ||
+		    of_machine_is_compatible("google,yellowstone"))
 			ardbeg_hdmi_vddio = regulator_get(dev, "vdd-out1-5v0");
 		else
 			ardbeg_hdmi_vddio = regulator_get(dev, "vdd_hdmi_5v0");
@@ -388,54 +388,6 @@ struct tmds_config ardbeg_tn8_tmds_config[] = {
 	},
 };
 
-/* Equivalent to T132 Bowmore */
-struct tmds_config ardbeg_tn8_tmds_config2[] = {
-	{ /* 480p/576p / 25.2MHz/27MHz modes */
-	.version = MKDEV(1, 0),
-	.pclk = 27000000,
-	.pll0 = 0x01003010,
-	.pll1 = 0x00301B00,
-	.pe_current = 0x00000000,
-	.drive_current = 0x1C1C1C1C,
-	.peak_current = 0x00000000,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
-	},
-	{ /* 720p / 74.25MHz modes */
-	.version = MKDEV(1, 0),
-	.pclk = 74250000,
-	.pll0 = 0x01003110,
-	.pll1 = 0x00301500,
-	.pe_current = 0x00000000,
-	.drive_current = 0x22232323,
-	.peak_current = 0x00000000,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
-	},
-	{ /* 1080p / 148.5MHz modes */
-	.version = MKDEV(1, 0),
-	.pclk = 148500000,
-	.pll0 = 0x01003310,
-	.pll1 = 0x10300F00,
-	.pe_current = 0x00000000,
-	.drive_current = 0x2A2C2C2A,
-	.peak_current = 0x00000000,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
-	},
-	{
-	.version = MKDEV(1, 0),
-	.pclk = INT_MAX,
-	.pll0 = 0x01003F10,
-	.pll1 = 0x10300700,
-	.pe_current = 0x00000000,
-	.drive_current = 0x30323333,
-	.peak_current = 0x10101010,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000600, /* BG_VREF_LEVEL */
-	},
-};
-
 struct tegra_hdmi_out ardbeg_hdmi_out = {
 	.tmds_config = ardbeg_tmds_config,
 	.n_tmds_config = ARRAY_SIZE(ardbeg_tmds_config),
@@ -478,14 +430,11 @@ static struct tegra_dc_mode hdmi_panel_modes[] = {
 
 static struct tegra_dc_out ardbeg_disp2_out = {
 	.type		= TEGRA_DC_OUT_HDMI,
-	.flags		= TEGRA_DC_OUT_HOTPLUG_HIGH,
-#ifndef CONFIG_TEGRA_HDMI_PRIMARY
+	.flags		= TEGRA_DC_OUT_HOTPLUG_HIGH |
+				TEGRA_DC_OUT_HOTPLUG_WAKE_LP0,
 	.parent_clk	= "pll_d2",
-#else
-	.parent_clk	= "pll_d",
-#endif /* CONFIG_TEGRA_HDMI_PRIMARY */
 
-	.ddc_bus	= 3,
+	.dcc_bus	= 3,
 	.hotplug_gpio	= ardbeg_hdmi_hpd,
 	.hdmi_out	= &ardbeg_hdmi_out,
 
@@ -534,13 +483,9 @@ static struct tegra_fb_data ardbeg_disp2_fb_data = {
 };
 
 static struct tegra_dc_platform_data ardbeg_disp2_pdata = {
-	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &ardbeg_disp2_out,
 	.fb		= &ardbeg_disp2_fb_data,
 	.emc_clk_rate	= 300000000,
-#ifdef CONFIG_TEGRA_DC_CMU
-	.cmu_enable	= 1,
-#endif
 };
 
 static struct platform_device ardbeg_disp2_device = {
@@ -575,21 +520,18 @@ static struct nvmap_platform_carveout ardbeg_carveouts[] = {
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_IRAM,
 		.base		= TEGRA_IRAM_BASE + TEGRA_RESET_HANDLER_SIZE,
 		.size		= TEGRA_IRAM_SIZE - TEGRA_RESET_HANDLER_SIZE,
-		.dma_dev	= &tegra_iram_dev,
 	},
 	[1] = {
 		.name		= "generic-0",
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_GENERIC,
 		.base		= 0, /* Filled in by ardbeg_panel_init() */
 		.size		= 0, /* Filled in by ardbeg_panel_init() */
-		.dma_dev	= &tegra_generic_dev,
 	},
 	[2] = {
 		.name		= "vpr",
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_VPR,
 		.base		= 0, /* Filled in by ardbeg_panel_init() */
 		.size		= 0, /* Filled in by ardbeg_panel_init() */
-		.dma_dev	= &tegra_vpr_dev,
 	},
 };
 
@@ -616,79 +558,16 @@ static struct tegra_io_dpd dsid_io = {
 };
 
 static struct tegra_dc_dp_lt_settings ardbeg_edp_lt_data[] = {
-	{
-		.drive_current = {
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-		},
-		.lane_preemphasis = {
-			PRE_EMPHASIS_L0,
-			PRE_EMPHASIS_L0,
-			PRE_EMPHASIS_L0,
-			PRE_EMPHASIS_L0,
-		},
-		.post_cursor = {
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-		},
-		.tx_pu = 0,
-		.load_adj = 0x3,
-	},
-	{
-		.drive_current = {
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-		},
-		.lane_preemphasis = {
-			PRE_EMPHASIS_L0,
-			PRE_EMPHASIS_L0,
-			PRE_EMPHASIS_L0,
-			PRE_EMPHASIS_L0,
-		},
-		.post_cursor = {
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-		},
-		.tx_pu = 0,
-		.load_adj = 0x4,
-	},
-	{
-		.drive_current = {
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-			DRIVE_CURRENT_L0,
-		},
-		.lane_preemphasis = {
-			PRE_EMPHASIS_L1,
-			PRE_EMPHASIS_L1,
-			PRE_EMPHASIS_L1,
-			PRE_EMPHASIS_L1,
-		},
-		.post_cursor = {
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-			POST_CURSOR2_L0,
-		},
-		.tx_pu = 0,
-		.load_adj = 0x6,
-	},
+	/* DriveCurrent	Preemphasis	PostCursor	tx_pu	load_adj */
+	{0x13131313,	0x00000000,	0x00000000,	0x20,	0x3},
+	{0x13131313,	0x00000000,	0x00000000,	0x20,	0x4},
+	{0x19191919,	0x09090909,	0x00000000,	0x30,	0x6}
 };
 
 static struct tegra_dp_out dp_settings = {
 	/* Panel can override this with its own LT data */
 	.lt_settings = ardbeg_edp_lt_data,
 	.n_lt_settings = ARRAY_SIZE(ardbeg_edp_lt_data),
-	.tx_pu_disable = true,
 };
 
 #ifndef CONFIG_TEGRA_HDMI_PRIMARY
@@ -713,38 +592,20 @@ static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
 		panel = &dsi_a_1080p_14_0;
 		break;
 	case BOARD_E1627:
+#ifdef PBP5_EVT_BOARD
+		panel = &dsi_j_wuxga_7;
+#else
 		panel = &dsi_p_wuxga_10_1;
-		tegra_io_dpd_enable(&dsic_io);
+#endif
 		tegra_io_dpd_enable(&dsid_io);
 		break;
 	case BOARD_E1549:
 		panel = &dsi_lgd_wxga_7_0;
 		break;
-	case BOARD_E1937:
-		switch (board_out->sku) {
-		case 1100:
-			panel = &dsi_a_1200_800_8_0;
-			dsi_instance = DSI_INSTANCE_0;
-			break;
-		default:
-			panel = &dsi_a_1200_1920_8_0;
-			dsi_instance = DSI_INSTANCE_0;
-			break;
-		}
-		break;
 	case BOARD_PM363:
 	case BOARD_E1824:
-		switch (board_out->sku) {
-		case 1200:
-			panel = &edp_i_1080p_11_6;
-			ardbeg_disp1_out.type = TEGRA_DC_OUT_NVSR_DP;
-			break;
-		default:
-			panel = &edp_a_1080p_14_0;
-			ardbeg_disp1_out.type = TEGRA_DC_OUT_DP;
-			break;
-		}
-
+		panel = &edp_a_1080p_14_0;
+		ardbeg_disp1_out.type = TEGRA_DC_OUT_DP;
 		ardbeg_disp1_out.dp_out = &dp_settings;
 		ardbeg_disp1_device.resource = ardbeg_disp1_edp_resources;
 		ardbeg_disp1_device.num_resources =
@@ -763,11 +624,21 @@ static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
 		tegra_io_dpd_enable(&dsic_io);
 		tegra_io_dpd_enable(&dsid_io);
 		break;
+	case BOARD_E1937:
+		panel = &dsi_a_1200_1920_7_0;
+		dsi_instance = DSI_INSTANCE_0;
+		break;
 	case BOARD_P1761:
 		if (tegra_get_board_panel_id())
-			panel = &dsi_a_1200_1920_8_0;
+			panel = &dsi_a_1200_1920_7_0;
 		else
 			panel = &dsi_a_1200_800_8_0;
+		dsi_instance = DSI_INSTANCE_0;
+		tegra_io_dpd_enable(&dsic_io);
+		tegra_io_dpd_enable(&dsid_io);
+		break;
+	case BOARD_YS:
+		panel = &dsi_j_wuxga_7;
 		dsi_instance = DSI_INSTANCE_0;
 		tegra_io_dpd_enable(&dsic_io);
 		tegra_io_dpd_enable(&dsid_io);
@@ -810,7 +681,8 @@ static void ardbeg_panel_select(void)
 
 			tegra_get_board_info(&mainboard);
 			if ((mainboard.board_id == BOARD_E1784) ||
-				(mainboard.board_id == BOARD_P1761)) {
+			    (mainboard.board_id == BOARD_P1761) ||
+			    (mainboard.board_id == BOARD_YS)) {
 
 				ardbeg_disp1_out.rotation = 180;
 
@@ -856,10 +728,6 @@ int __init ardbeg_panel_init(void)
 
 	struct device_node *dc1_node = NULL;
 	struct device_node *dc2_node = NULL;
-#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
-	struct dma_declare_info vpr_dma_info;
-	struct dma_declare_info generic_dma_info;
-#endif
 
 	find_dc_node(&dc1_node, &dc2_node);
 
@@ -870,48 +738,16 @@ int __init ardbeg_panel_init(void)
 #ifdef CONFIG_TEGRA_NVMAP
 	ardbeg_carveouts[1].base = tegra_carveout_start;
 	ardbeg_carveouts[1].size = tegra_carveout_size;
-
 	ardbeg_carveouts[2].base = tegra_vpr_start;
 	ardbeg_carveouts[2].size = tegra_vpr_size;
-
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
-	generic_dma_info.name = "generic";
-	generic_dma_info.base = tegra_carveout_start;
-	generic_dma_info.size = tegra_carveout_size;
-	generic_dma_info.resize = false;
-	generic_dma_info.cma_dev = NULL;
-
-	vpr_dma_info.name = "vpr";
-	vpr_dma_info.base = tegra_vpr_start;
-	vpr_dma_info.size = tegra_vpr_size;
-	vpr_dma_info.resize = false;
-	vpr_dma_info.cma_dev = NULL;
+	carveout_linear_set(&tegra_generic_cma_dev);
 	ardbeg_carveouts[1].cma_dev = &tegra_generic_cma_dev;
 	ardbeg_carveouts[1].resize = false;
+	carveout_linear_set(&tegra_vpr_cma_dev);
 	ardbeg_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
 	ardbeg_carveouts[2].resize = true;
-
-	vpr_dma_info.size = SZ_32M;
-	vpr_dma_info.resize = true;
-	vpr_dma_info.cma_dev = &tegra_vpr_cma_dev;
-	vpr_dma_info.notifier.ops = &vpr_dev_ops;
-
-	if (tegra_carveout_size) {
-		err = dma_declare_coherent_resizable_cma_memory(
-				&tegra_generic_dev, &generic_dma_info);
-		if (err) {
-			pr_err("Generic coherent memory declaration failed\n");
-			return err;
-		}
-	}
-	if (tegra_vpr_size) {
-		err = dma_declare_coherent_resizable_cma_memory(
-				&tegra_vpr_dev, &vpr_dma_info);
-		if (err) {
-			pr_err("VPR coherent memory declaration failed\n");
-			return err;
-		}
-	}
+	ardbeg_carveouts[2].cma_chunk_size = SZ_32M;
 #endif
 
 	err = platform_device_register(&ardbeg_nvmap_device);
@@ -949,15 +785,6 @@ int __init ardbeg_panel_init(void)
 		__tegra_clear_framebuffer(&ardbeg_nvmap_device,
 					  tegra_fb_start, tegra_fb_size);
 
-	/* Copy the bootloader fb2 to the fb2. */
-	if (tegra_bootloader_fb2_size)
-		__tegra_move_framebuffer(&ardbeg_nvmap_device,
-				tegra_fb2_start, tegra_bootloader_fb2_start,
-				min(tegra_fb2_size, tegra_bootloader_fb2_size));
-	else
-		__tegra_clear_framebuffer(&ardbeg_nvmap_device,
-					tegra_fb2_start, tegra_fb2_size);
-
 #ifndef CONFIG_TEGRA_HDMI_PRIMARY
 	if (!of_have_populated_dt() || !dc1_node ||
 		!of_device_is_available(dc1_node)) {
@@ -970,29 +797,8 @@ int __init ardbeg_panel_init(void)
 	}
 #endif
 	tegra_get_board_info(&board_info);
-	switch (board_info.board_id) {
-	case BOARD_E1991:
-		ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config2;
-		break;
-	case BOARD_P1761:
-		if (board_info.fab == 3)
-			ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config2;
-		else
-			ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config;
-		break;
-	case BOARD_PM375:
-		ardbeg_tmds_config[1].pe_current = 0x08080808;
-		ardbeg_tmds_config[1].drive_current = 0x2d2d2d2d;
-		ardbeg_tmds_config[1].peak_current = 0x0;
-		ardbeg_tmds_config[2].pe_current = 0x0;
-		ardbeg_tmds_config[2].drive_current = 0x2d2d2d2d;
-		ardbeg_tmds_config[2].peak_current = 0x05050505;
-		break;
-	case BOARD_PM359:
-	case BOARD_E1971:
-	case BOARD_E1973:
-	default:	 /* default is ardbeg_tmds_config[] */
-		break;
+	if (board_info.board_id == BOARD_P1761) {
+		ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config;
 	}
 
 	if (!of_have_populated_dt() || !dc2_node ||
@@ -1011,6 +817,14 @@ int __init ardbeg_panel_init(void)
 		}
 	}
 
+#ifdef CONFIG_TEGRA_NVAVP
+	nvavp_device.dev.parent = &phost1x->dev;
+	err = platform_device_register(&nvavp_device);
+	if (err) {
+		pr_err("nvavp device registration failed\n");
+		return err;
+	}
+#endif
 	return err;
 }
 
