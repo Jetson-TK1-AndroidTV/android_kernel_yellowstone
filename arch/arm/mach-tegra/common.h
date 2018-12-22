@@ -38,7 +38,12 @@ extern phys_addr_t tegra_avp_kernel_size;
 void ahb_gizmo_writel(unsigned long val, void __iomem *reg);
 
 extern struct device tegra_generic_cma_dev;
+extern struct device tegra_generic_dev;
+extern struct device tegra_vpr_dev;
 extern struct device tegra_vpr_cma_dev;
+extern struct device tegra_iram_dev;
+extern struct dma_resize_notifier_ops vpr_dev_ops;
+
 extern int tegra_with_secure_firmware;
 
 u32 tegra_get_sku_id(void);
