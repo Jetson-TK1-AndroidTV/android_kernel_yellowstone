@@ -196,11 +196,6 @@ struct device_node *tegra_panel_get_dt_node(
 		tegra_panel_register_ops(dc_out, &dsi_lgd_wxga_7_0_ops);
 		np_panel = of_find_compatible_node(NULL, NULL, "lg,wxga-7");
 		break;
-	case BOARD_E1639:
-	case BOARD_E1813:
-		tegra_panel_register_ops(dc_out, &dsi_s_wqxga_10_1_ops);
-		np_panel = of_find_compatible_node(NULL, NULL, "s,wqxga-10-1");
-		break;
 	default:
 		WARN(1, "Display panel not supported\n");
 	};
